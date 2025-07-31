@@ -1,0 +1,6 @@
+torch==2.7.1
+opendatasets==0.1.22
+torchsummary==1.5.1
+scikit-learn==1.7.1
+matplotlib==3.10.3
+pandas==2.3.1
