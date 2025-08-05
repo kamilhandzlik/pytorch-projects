@@ -156,7 +156,6 @@ for epoch in range(EPOCHS):
         total_loss_train += batch_loss.item()
         acc = ((predictions).round() == labels).sum().item()
         total_acc_train += acc
-
         batch_loss.backward()
         optimizer.zero_grad()
         optimizer.step()
