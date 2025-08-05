@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchsummary import summary
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
+from sklearn.preprocessing import LabelEncoder
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -31,18 +32,27 @@ data_df.drop(["id"], axis=1, inplace=True)
 # print("Data shape (rows, cols): ", data_df.shape)
 # print(data_df.head())
 
-# 3. Data Preprocessing
-original_df = (
-    data_df.copy()
-)  # Creating a copy of the original Dataframe to use to normalize inference
 
+# 3. Label Encoding - WAŻNE: Konwertuj stringi na liczby
+label_encoder = LabelEncoder()
+data_df["Class"] = label_encoder.fit_transform(data_df["Class"])
+num_classes = len(label_encoder.classes_)
+print(f"Number of classes: {num_classes}")
+print(f"Class mapping: {dict(zip(label_encoder.classes_, range(num_classes)))}")
+
+
+# 4. Data Preprocessing
+original_df = data_df.copy()
+# Creating a copy of the original Dataframe to use to normalize inference
+
+features_columns = data_df.columns[:-1]
 for column in data_df.columns:
     data_df[column] = data_df[column] / data_df[column].abs().max()
 
 print(data_df.head())
 
 
-# 4. Data Splitting
+# 5. Data Splitting
 X = np.array(
     data_df.iloc[:, :-1]
 )  # Get the inputs, all rows and all columns except last column (output)
@@ -51,12 +61,14 @@ Y = np.array(
 )  # Get the ouputs, all rows and last column only (output column)
 
 X_train, X_test, Y_train, Y_test = train_test_split(
-    X, Y, test_size=0.3
+    X, Y, test_size=0.3, random_state=42
 )  # Create the training split
 X_test, X_val, Y_test, Y_val = train_test_split(
-    X_test, Y_test, test_size=0.5
+    X_test, Y_test, test_size=0.5, random_state=42
 )  # Create the validation split
-
+print(f"Training set: {X_train.shape[0]} samples")
+print(f"Validation set: {X_val.shape[0]} samples")
+print(f"Test set: {X_test.shape[0]} samples")
 
 # print(
 # "Training set is: ",
@@ -81,11 +93,11 @@ X_test, X_val, Y_test, Y_val = train_test_split(
 # )
 
 
-# 5. Dataset Object
+# 6. Dataset Object
 class dataset(Dataset):
     def __init__(self, X, Y):
         self.X = torch.tensor(X, dtype=torch.float32).to(device)
-        self.Y = torch.tensor(Y, dtype=torch.float32).to(device)
+        self.Y = torch.tensor(Y, dtype=torch.long).to(device)
 
     def __len__(self):
         return len(self.X)
@@ -98,52 +110,57 @@ training_data = dataset(X_train, Y_train)
 validation_data = dataset(X_val, Y_val)
 testing_data = dataset(X_test, Y_test)
 
-# 6. Training Hyper Parameters
+# 7. Training Hyper Parameters
 BATCH_SIZE = 32
 EPOCHS = 10
-HIDDEN_UNITS = 10
+HIDDEN_UNITS = 32
 LEARNING_RATE = 1e-3
 
-# 7. Data Loaders
+# 8. Data Loaders
 training_dataloader = DataLoader(training_data, batch_size=BATCH_SIZE, shuffle=True)
 validation_dataloader = DataLoader(validation_data, batch_size=BATCH_SIZE, shuffle=True)
 testing_dataloader = DataLoader(testing_data, batch_size=BATCH_SIZE, shuffle=True)
 
-# 8. Model Class
+# 9. Model Class
 
 
 class RiceClassifcationModel(nn.Module):
-    def __init__(self):
+    def __init__(self, input_size, hidden_units, num_classes):
         super(RiceClassifcationModel, self).__init__()
 
-        self.input_layser = nn.Linear(X.shape[1], HIDDEN_UNITS)
-        self.linear = nn.Linear(HIDDEN_UNITS, 1)
-        self.sigmoid = nn.Sigmoid()
+        self.network = nn.Sequential(
+            nn.Linear(input_size, hidden_units),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(hidden_units, hidden_units),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(hidden_units, num_classes),
+        )
 
     def forward(self, x):
-        x = self.input_layser(x)
-        x = self.linear(x)
-        x = self.sigmoid(x)
-        return x
+        return self.network(x)
 
 
-# 9. Model Initialization
-model = RiceClassifcationModel().to(device)
-# print(summary(model, (X.shape[1],)))
+# 10. Model Initialization
+model = RiceClassifcationModel(X.shape[1], HIDDEN_UNITS, num_classes).to(device)
+print(f"Model architecture:")
+print(model)
 
 
-# 10. Loss Function and Optimizer
-criterion = nn.BCELoss()
+# 11. Loss Function and Optimizer
+criterion = nn.CrossEntropyLoss()
 optimizer = Adam(model.parameters(), lr=LEARNING_RATE)
 
 
-# 11. Training Loop
+# 12. Training Loop
 total_loss_train_plot = []
 total_loss_validation_plot = []
 total_acc_train_plot = []
 total_acc_validation_plot = []
 
 for epoch in range(EPOCHS):
+    # Training phase
     total_acc_train = 0
     total_loss_train = 0
     total_acc_val = 0
@@ -151,36 +168,55 @@ for epoch in range(EPOCHS):
 
     for data in training_dataloader:
         inputs, labels = data
-        predictions = model(inputs).squeeze()
+
+        # Forward pass
+        predictions = model(inputs)
         batch_loss = criterion(predictions, labels)
-        total_loss_train += batch_loss.item()
-        acc = ((predictions).round() == labels).sum().item()
-        total_acc_train += acc
-        batch_loss.backward()
+
+        # Backward pass
         optimizer.zero_grad()
+        batch_loss.backward()
         optimizer.step()
+
+        # Metrics
+        total_loss_train += batch_loss.item()
+        _, predicted = torch.max(predictions.data, 1)
+        total_acc_train += (predicted == labels).sum().item()
+
+    # Validation phase
+    model.eval()
+    total_acc_val = 0
+    total_loss_val = 0
 
     with torch.no_grad():
         for data in validation_dataloader:
             inputs, labels = data
-            predictions = model(inputs).squeeze()
+            predictions = model(inputs)
             batch_loss = criterion(predictions, labels)
-            total_loss_val += batch_loss.item()
-            acc = ((predictions).round() == labels).sum().item()
-            total_acc_val += acc
 
-    total_loss_train_plot.append(round(total_loss_train / 1000, 4))
-    total_acc_train_plot.append(round(total_acc_train / len(training_data), 4))
-    total_loss_validation_plot.append(round(total_loss_val / 1000, 4))
-    total_acc_validation_plot.append(round(total_acc_val / len(validation_data), 4))
+            total_loss_val += batch_loss.item()
+            _, predicted = torch.max(predictions.data, 1)
+            total_acc_val += (predicted == labels).sum().item()
+
+    # Store metrics
+    avg_train_loss = total_loss_train / len(training_dataloader)
+    avg_val_loss = total_loss_val / len(validation_dataloader)
+    train_acc = (total_acc_train / len(training_data)) * 100
+    val_acc = (total_acc_val / len(validation_data)) * 100
+
+    total_loss_train_plot.append(avg_train_loss)
+    total_acc_train_plot.append(train_acc)
+    total_loss_validation_plot.append(avg_val_loss)
+    total_acc_validation_plot.append(val_acc)
 
     print(
-        f"""Epoch no. {epoch + 1} Train Loss: {total_loss_train/1000:.4f} Train Accuracy: {(total_acc_train/(training_data.__len__())*100):.4f} Validation Loss: {total_loss_val/1000:.4f} Validation Accuracy: {(total_acc_val/(validation_data.__len__())*100):.4f}"""
+        f"Epoch {epoch + 1:2d}/{EPOCHS} | "
+        f"Train Loss: {avg_train_loss:.4f} | Train Acc: {train_acc:.2f}% | "
+        f"Val Loss: {avg_val_loss:.4f} | Val Acc: {val_acc:.2f}%"
     )
-    print("=" * 50)
 
 
-# 12. Testing the Model
+# 13. Testing the Model
 
 with torch.no_grad():
     total_acc_test = 0
@@ -188,15 +224,16 @@ with torch.no_grad():
 
     for data in testing_dataloader:
         inputs, labels = data
-        predictions = model(inputs).squeeze()
+        predictions = model(inputs)
         batch_loss_test = criterion(predictions, labels)
+
         total_loss_test += batch_loss_test.item()
-        acc = ((predictions).round() == labels).sum().item()
-        total_acc_test += acc
+        _, predicted = torch.max(predictions.data, 1)
+        total_acc_test += (predicted == labels).sum().item()
 
 print(f"Accuracy Score is: {round(total_acc_test / X_test.shape[0])*100, 2}%")
 
-# 13. Plotting and Visualization
+# 14. Plotting and Visualization
 
 fig, axs = plt.subplots(nrows=1, ncols=2, figsize=(15, 5))
 
@@ -221,39 +258,47 @@ plt.tight_layout()
 plt.show()
 
 
-# 14. Inference
-area = float(input("Area: ")) / original_df["Area"].abs().max()
-MajorAxisLength = (
-    float(input("Major Axis Length: ")) / original_df["MajorAxisLength"].abs().max()
-)
-MinorAxisLength = (
-    float(input("Minor Axis Length: ")) / original_df["MinorAxisLength"].abs().max()
-)
-Eccentricity = float(input("Eccentricity: ")) / original_df["Eccentricity"].abs().max()
-ConvexArea = float(input("Convex Area: ")) / original_df["ConvexArea"].abs().max()
-EquivDiameter = (
-    float(input("EquivDiameter: ")) / original_df["EquivDiameter"].abs().max()
-)
-Extent = float(input("Extent: ")) / original_df["Extent"].abs().max()
-Perimeter = float(input("Perimeter: ")) / original_df["Perimeter"].abs().max()
-Roundness = float(input("Roundness: ")) / original_df["Roundness"].abs().max()
-AspectRation = float(input("AspectRation: ")) / original_df["AspectRation"].abs().max()
-
-my_inputs = [
+# 15. Inference
+def predict_rice_type(
     area,
-    MajorAxisLength,
-    MinorAxisLength,
-    Eccentricity,
-    ConvexArea,
-    EquivDiameter,
-    Extent,
-    Perimeter,
-    Roundness,
-    AspectRation,
-]
+    major_axis,
+    minor_axis,
+    eccentricity,
+    convex_area,
+    equiv_diameter,
+    extent,
+    perimeter,
+    roundness,
+    aspect_ratio,
+):
+    # Normalize inputs using original data statistics
+    normalized_inputs = [
+        area / original_df["Area"].abs().max(),
+        major_axis / original_df["MajorAxisLength"].abs().max(),
+        minor_axis / original_df["MinorAxisLength"].abs().max(),
+        eccentricity / original_df["Eccentricity"].abs().max(),
+        convex_area / original_df["ConvexArea"].abs().max(),
+        equiv_diameter / original_df["EquivDiameter"].abs().max(),
+        extent / original_df["Extent"].abs().max(),
+        perimeter / original_df["Perimeter"].abs().max(),
+        roundness / original_df["Roundness"].abs().max(),
+        aspect_ratio / original_df["AspectRation"].abs().max(),
+    ]
 
-print("=" * 20)
-model_inputs = torch.Tensor(my_inputs).to(device)
-prediction = model(model_inputs)
-print(prediction)
-print("Class is: ", round(prediction.item()))
+    model.eval()
+    with torch.no_grad():
+        model_inputs = torch.tensor(normalized_inputs, dtype=torch.float32).to(device)
+        predictions = model(model_inputs.unsqueeze(0))  # Add batch dimension
+        _, predicted_class = torch.max(predictions, 1)
+
+        # Convert back to original class name
+        class_name = label_encoder.inverse_transform([predicted_class.item()])[0]
+        confidence = torch.softmax(predictions, 1).max().item()
+
+        return class_name, confidence
+
+
+# Example usage (uncomment to use):
+# result, confidence = predict_rice_type(15231, 421.91, 253.31, 0.83, 15617,
+#                                       440.11, 0.73, 1360.73, 0.65, 1.67)
+# print(f"Predicted class: {result} (confidence: {confidence:.2f})")
