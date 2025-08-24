@@ -37,6 +37,8 @@ RANDOM_SEED = 42
 BATCH_SIZE = 32
 LEARNING_RATE = 1e-4
 NUM_EPOCHS = 10
+N_ROWS = 3
+N_COLS = 3
 
 # 5. Reading data paths
 train_df = pd.read_csv("Image_Classification/dataset/train.csv")
@@ -93,3 +95,55 @@ class CustomDatasetClass(Dataset):
             image = (self.transform(image) / 255).to(device)
 
         return image, label
+
+
+# 10. Datasets
+
+train_dataset = CustomDatasetClass(train, transform)
+test_dataset = CustomDatasetClass(test, transform)
+
+
+# 11. Visualize data
+
+
+def visualize_data(dataset, num_images=5):
+    f, axarr = plt.subplots(N_ROWS, N_COLS)
+    for row in range(N_ROWS):
+        for col in range(N_COLS):
+            image = train_dataset[np.random.randint(0, train_dataset.__len__())][
+                0
+            ].cpu()
+            axarr[row, col].imshow((image * 255).squeeze().permute(1, 2, 0))
+            axarr[row, col].axis("off")
+    plt.tight_layout()
+    plt.show()
+
+
+visualize_data(train_dataset)
+
+
+# 12. Dataloaders
+
+
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=True)
+
+
+# 13. Model
+
+
+class ImageClassificationModel(nn.Module):
+    def __init__(self, input_shape: int, hidden_units: int, output_shape: int):
+        super().__init__()
+
+        self.layers = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(in_features=input_shape, out_features=hidden_units),
+            nn.ReLU(),
+            nn.Linear(in_features=hidden_units, out_features=hidden_units),
+            nn.ReLU(),
+            nn.Linear(in_features=hidden_units, out_features=output_shape),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.layers(x)

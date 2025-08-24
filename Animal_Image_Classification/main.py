@@ -255,12 +255,12 @@ def predict_image(image_path):
 
 
 ## Visualize the image
-image = Image.open("/content/cute-photos-of-cats-looking-at-camera-1593184780.jpg")
-plt.imshow(image)
-plt.show()
+# image = Image.open("/content/cute-photos-of-cats-looking-at-camera-1593184780.jpg")
+# plt.imshow(image)
+# plt.show()
 
 
 ## Predict
 print()
 print("Prediction: \n")
-predict_image("/content/cute-photos-of-cats-looking-at-camera-1593184780.jpg")
+# predict_image("/content/cute-photos-of-cats-looking-at-camera-1593184780.jpg")
