@@ -36,7 +36,7 @@ print(f"\n\33[92mUsing device: {device}\33[0m\n")
 RANDOM_SEED = 42
 BATCH_SIZE = 32
 LEARNING_RATE = 1e-4
-NUM_EPOCHS = 10
+EPOCHS = 10
 N_ROWS = 3
 N_COLS = 3
 
@@ -147,3 +147,77 @@ class ImageClassificationModel(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.layers(x)
+
+
+# 14 Train and test loops
+def accuracy_fn(y_true, y_pred):
+    """Calculates accuracy between truth labels and predictions.
+
+    Args:
+        y_true (torch.Tensor): Truth labels for predictions.
+        y_pred (torch.Tensor): Predictions to be compared to predictions.
+
+    Returns:
+        [torch.float]: Accuracy value between y_true and y_pred, e.g. 78.45
+    """
+    correct = torch.eq(y_true, y_pred).sum().item()
+    acc = (correct / len(y_pred)) * 100
+    return acc
+
+
+def train_step(
+    model: nn.Module,
+    data_loader: DataLoader,
+    loss_fn: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    accuracy_fn=None,
+    device: torch.device = device,
+):
+    train_loss, train_acc = 0, 0
+    model.to(device)
+    for batch, (X, y) in data_loader:
+        X, y = X.to(device), y.to(device)
+        model.train()
+        # 1. Forward pass
+        y_pred = model(X)
+        # 2. Calculate the loss
+        loss = loss_fn(y_pred, y)
+        train_loss += loss
+        # 3. Optimizer zerograd
+        optimizer.zero_grad()
+        # 4.  Backward pass
+        loss.backward()
+        # 5. Optmizer step
+        optimizer.step()
+    train_loss /= len(data_loader)
+    train_acc /= len(data_loader)
+    print(f"Train loss: {train_loss} | Train accuracy: {train_acc}%")
+
+
+def test_step(
+    model: nn.Module,
+    data_loader: DataLoader,
+    loss_fn: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    accuracy_fn,
+    device: torch.device = device,
+):
+    test_loss, test_acc = 0, 0
+    model.to(device)
+    model.eval()
+    with torch.inference_mode():
+        for X, y in data_loader:
+            X, y = X.to(device), y.to(device)
+            # 1. Forward pass
+            test_pred = model(X)
+            # 2. Calculate loss and accuracy
+            test_loss += loss_fn(test_pred)
+            test_acc += accuracy_fn(y_true=y, y_pred=test_pred.argmax(dim=1))
+        test_loss /= len(data_loader)
+        test_acc /= len(data_loader)
+    print(f"Test loss: {test_loss} | Test accuracy: {test_acc}%")
+
+
+for epoch in range(EPOCHS):
+    train_step()
+    test_step()
