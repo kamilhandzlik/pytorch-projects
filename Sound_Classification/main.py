@@ -117,3 +117,64 @@ class InstrumentDataset(Dataset):
             features = waveform
 
         return features, label
+
+
+# 8. Create Dataset Objects
+train_dataset = InstrumentDataset(train, transform)
+temp_dataset = InstrumentDataset(temp, transform)
+val_dataset = InstrumentDataset(val, transform)
+test_dataset = InstrumentDataset(test, transform)
+
+
+# 9. Vizualization of data
+def plot_waveform(waveform, sample_rate, title="Waveform"):
+    plt.figure(figsize=(10, 4))
+    plt.plot(
+        np.linspace(0, waveform.shape[1] / sample_rate, waveform.shape[1]),
+        waveform[0].numpy(),
+    )
+    plt.title(title)
+    plt.xlabel("Time [s]")
+    plt.ylabel("Amplitude")
+    plt.show()
+
+
+def plot_spectrogram(spec, title="Spectrogram"):
+    plt.figure(figsize=(10, 4))
+    plt.imshow(spec[0].numpy(), aspect="auto", origin="lower")
+    plt.title(title)
+    plt.xlabel("Time")
+    plt.ylabel("Mel bins")
+    plt.colorbar(format="%+2.0f dB")
+    plt.show()
+
+
+def visualize_batch(dataloader, n_rows=3, n_cols=3, mode="spectrogram"):
+    batch = next(iter(dataloader))
+    features, labels = batch
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(12, 8))
+    axes = axes.flatten()
+
+    for i, ax in enumerate(axes):
+        if i >= len(features):
+            break
+
+        if mode == "spectrogram":
+            spec = features[i][0].numpy()
+            ax.imshow(spec, aspect="auto", origin="lower")
+            ax.set_title(f"Label: {labels[i].item()}")
+        else:
+            waveform = features[i][0].numpy()
+            ax.plot(waveform)
+            ax.set_title(f"Label: {labels[i].item()}")
+
+        ax.axis("off")
+
+    plt.tight_layout()
+    plt.show()
+
+
+train_loader = DataLoader(train_dataset, batch_size=9, shuffle=True)
+
+visualize_batch(train_loader, mode="spectrogram")
