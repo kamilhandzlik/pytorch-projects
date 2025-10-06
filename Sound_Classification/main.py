@@ -99,14 +99,14 @@ class InstrumentDataset(Dataset):
     def __init__(self, df, label_encoder, transform=None):
         self.df = df.reset_index(drop=True)
         self.label_encoder = label_encoder
-        transform = transform
+        self.transform = transform
 
     def __len__(self):
         return len(self.df)
 
     def __getitem__(self, idx):
         sound_path = self.df.loc[idx, "sound_path"]
-        label = self.df.loc[idx, "label"]
+        label = self.df.loc[idx, "labels"]
 
         waveform, sample_rate = torchaudio.load(sound_path)
         label = self.label_encoder.transform([label])[0]
@@ -120,10 +120,10 @@ class InstrumentDataset(Dataset):
 
 
 # 8. Create Dataset Objects
-train_dataset = InstrumentDataset(train, transform)
-temp_dataset = InstrumentDataset(temp, transform)
-val_dataset = InstrumentDataset(val, transform)
-test_dataset = InstrumentDataset(test, transform)
+train_dataset = InstrumentDataset(train, label_encoder, transform)
+temp_dataset = InstrumentDataset(temp, label_encoder, transform)
+val_dataset = InstrumentDataset(val, label_encoder, transform)
+test_dataset = InstrumentDataset(test, label_encoder, transform)
 
 
 # 9. Vizualization of data
