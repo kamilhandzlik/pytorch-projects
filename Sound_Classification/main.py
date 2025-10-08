@@ -19,6 +19,7 @@ PPs. Warning it weights aproximetly 5 Gb ;)
 # 1. Imports
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.optim import Adam
 from torch.utils.data import DataLoader, Dataset
 import torchaudio
@@ -178,3 +179,68 @@ def visualize_batch(dataloader, n_rows=3, n_cols=3, mode="spectrogram"):
 train_loader = DataLoader(train_dataset, batch_size=9, shuffle=True)
 
 visualize_batch(train_loader, mode="spectrogram")
+
+
+# 10. Dataloader
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=True)
+
+
+# 11. CNN Model
+
+
+class CNNSoundClassifeir(nn.Module):
+    def __init__(self, num_classes=3):
+        super().__init__()
+
+        # Convolutional layers
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+
+        # Batch normalization
+        self.bn1 = nn.BatchNorm2d(32)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.bn3 = nn.BatchNorm2d(128)
+
+        # Pooling
+        self.pool = nn.MaxPool2d(2, 2)
+
+        # Dropout
+        self.dropout = nn.Dropout(0.5)
+
+        # Fully connected layers
+        self.fc1 = nn.Linear(128 * 16 * 16, 512)
+        self.fc2 = nn.Linear(512, num_classes)
+
+    def forward(self, x):
+        # Con blocks
+        x = self.pool(F.relu(self.bn1(self.conv1(x))))
+        x = self.pool(F.relu(self.bn2(self.conv2(x))))
+        x = self.pool(F.relu(self.bn3(self.conv3(x))))
+
+        # Flatten
+        x = x.view(x.size(0), -1)
+
+        # FC layers
+        x = F.relu(self.fc1(x))
+        x = self.dropout(x)
+        x = self.fc2(x)
+
+        return x
+
+
+# 14. Train and test loops
+def accuracy_fn(y_true, y_pred):
+    """Calculates accuracy between truth labels and predictions.
+
+    Args:
+        y_true (torch.Tensor): Truth labels for predictions.
+        y_pred (torch.Tensor): Predictions to be compared to predictions.
+
+    Returns:
+        [torch.float]: Accuracy value between y_true and y_pred, e.g. 78.45
+    """
+    correct = torch.eq(y_true, y_pred).sum().item()
+    acc = (correct / len(y_pred)) * 180
+    return acc
