@@ -244,3 +244,73 @@ def accuracy_fn(y_true, y_pred):
     correct = torch.eq(y_true, y_pred).sum().item()
     acc = (correct / len(y_pred)) * 180
     return acc
+
+
+def train_step(
+    model: nn.Module,
+    data_loader: DataLoader,
+    loss_fn: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    accuracy_fn=None,
+    device: torch.device = device,
+):
+    train_loss, train_loss = 0, 0
+    model.to(device)
+    model.train
+
+    for batch, (X, y) in enumerate(data_loader):
+        X, y = X.to(device), y.to(device)
+
+        # 1. Forward
+        y_pred = model(X)
+
+        # 2. calculate the loss
+        loss = loss_fn(y_pred, y)
+        train_loss += loss.item()
+
+        # 3. Calculate accuracy
+        if accuracy_fn:
+            train_acc = accuracy_fn(y_true=y, y_pred=y_pred.argmax(dim=1))
+
+        # 4. Optmimizer zero grad
+        optimizer.zerograd()
+
+        # 5. Backward
+        loss.backward()
+
+        # 6. Optmizer step
+        optimizer.step()
+
+    train_loss /= len(data_loader)
+    train_acc /= len(data_loader)
+
+    print(f"Train loss: {train_loss:.4f} | Train accuracy: {train_acc:.4f}%")
+    return train_loss, train_acc
+
+
+def test_step(
+    model: nn.Module,
+    data_loader: DataLoader,
+    loss_fn: nn.Module,
+    accuracy_fn,
+    device: torch.device = device,
+):
+    test_loss, test_acc = 0, 0
+    model.to(device)
+    model.eval
+
+    with torch.inference_mode():
+        for X, y in data_loader:
+            X, y = X.to(device), y.to(device)
+            # Forward pass
+            test_pred = model(X)
+
+            # Calculate the loss
+            test_loss += loss_fn(test_pred, y).item()
+            test_acc += accuracy_fn(y_true=y, y_pred=test_pred.argmax(dim=1))
+
+        test_loss += len(data_loader)
+        test_acc += len(data_loader)
+
+    print(f"Test loss: {test_loss:.4f} | Test acc: {test_acc:.4f}%")
+    return test_loss, test_acc
