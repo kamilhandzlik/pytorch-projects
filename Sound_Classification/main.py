@@ -52,7 +52,8 @@ BATCH_SIZE = 32
 EPOCHS = 10
 INPUT_SHAPE = "?"
 HIDDEN_UNITS = 128
-OUTPUT = "?"
+OUTPUT_SHAPE = "?"
+LEARNING_RATE = 1e-4
 LOSS_FN = nn.CrossEntropyLoss()
 N_ROWS = 3
 N_COLS = 3
@@ -314,3 +315,45 @@ def test_step(
 
     print(f"Test loss: {test_loss:.4f} | Test acc: {test_acc:.4f}%")
     return test_loss, test_acc
+
+
+# 15. Model initialization
+cnn_model = CNNSoundClassifeir(
+    input_shape=INPUT_SHAPE, hidden_units=HIDDEN_UNITS, output_shape=OUTPUT_SHAPE
+).to(device)
+
+cnn_params = sum(p.numel() for p in cnn_model.parameters())
+print(f"CNN Model parameters: {cnn_params:,}")
+
+cnn_optimizer = Adam(cnn_model.parameters(), lr=LEARNING_RATE)
+
+
+# 16. Training
+cnn_history = {"train_loss": [], "train_acc": [], "test_loss": [], "test_acc": []}
+
+
+print(f"\n{'=' * 30} CNN Voice Classifier {'=' * 30}")
+for epoch in range(EPOCHS):
+    print(f"\nCNN Epoch: {epoch+1}/{EPOCHS}")
+    print("-" * 40)
+
+    train_loss, train_acc = train_step(
+        cnn_model, train_loader, LOSS_FN, cnn_optimizer, accuracy_fn, device
+    )
+    test_loss, test_acc = test_step(cnn_model, test_loader, accuracy_fn, device)
+
+    cnn_history["train_loss"].append(train_loss)
+    cnn_history["train_acc"].append(train_acc)
+    cnn_history["test_loss"].append(test_loss)
+    cnn_history["test_acc"].append(test_acc)
+
+    print(f"CNN Train loss: {train_loss:.4f} | Train accuracy: {train_acc:.2f}%")
+    print(f"CNN Test loss: {test_loss:.4f} | Test accuracy: {test_acc:.2f}%")
+
+
+cnn_best_acc = max(cnn_history["test_acc"])
+cnn_final_acc = cnn_history["test_acc"][-1]
+
+
+print(f"  Final Test Accuracy: {cnn_final_acc:.2f}%")
+print(f"  Final Train Loss: {cnn_history['train_loss'][-1]:.4f}")
