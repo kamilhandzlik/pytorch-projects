@@ -50,9 +50,9 @@ print(
 RANDOM_SEED = 42
 BATCH_SIZE = 32
 EPOCHS = 10
-INPUT_SHAPE = "?"
+INPUT_SHAPE = 1 * 128 * 517
 HIDDEN_UNITS = 128
-OUTPUT_SHAPE = "?"
+OUTPUT_SHAPE = 9
 LEARNING_RATE = 1e-4
 LOSS_FN = nn.CrossEntropyLoss()
 N_ROWS = 3
@@ -186,16 +186,23 @@ visualize_batch(train_loader, mode="spectrogram")
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=True)
 
+# 10.1 Checking shape for input and output shapes
+for X_batch, y_batch in train_loader:
+    print(f"X_batch: {X_batch.shape} | y_batch: {y_batch.shape}")
+    break
+
+# 10.2 chcecking if label is out of range
+
 
 # 11. CNN Model
 
 
 class CNNSoundClassifeir(nn.Module):
-    def __init__(self, num_classes=3):
+    def __init__(self, input_shape, hidden_units, output_shape):
         super().__init__()
 
         # Convolutional layers
-        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
         self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
 
@@ -204,15 +211,22 @@ class CNNSoundClassifeir(nn.Module):
         self.bn2 = nn.BatchNorm2d(64)
         self.bn3 = nn.BatchNorm2d(128)
 
-        # Pooling
+        # Pooling & Dropout
         self.pool = nn.MaxPool2d(2, 2)
-
-        # Dropout
         self.dropout = nn.Dropout(0.5)
 
         # Fully connected layers
-        self.fc1 = nn.Linear(128 * 16 * 16, 512)
-        self.fc2 = nn.Linear(512, num_classes)
+        self.flatten_dim = self._get_flatten_size(input_shape)
+        self.fc1 = nn.Linear(self.flatten_dim, hidden_units)
+        self.fc2 = nn.Linear(hidden_units, output_shape)
+
+    def _get_flatten_size(self, input_shape):
+        with torch.no_grad():
+            x = torch.zeros(1, 1, 128, 517)
+            x = self.pool(F.relu(self.bn1(self.conv1(x))))
+            x = self.pool(F.relu(self.bn2(self.conv2(x))))
+            x = self.pool(F.relu(self.bn3(self.conv3(x))))
+            return x.view(1, -1).size(1)
 
     def forward(self, x):
         # Con blocks
