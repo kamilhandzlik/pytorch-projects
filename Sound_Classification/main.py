@@ -1,19 +1,6 @@
 """
 Dataset used for training this model is from:
-https://www.kaggle.com/datasets/abdulvahap/music-instrunment-sounds-for-classification?utm_source=chatgpt.com
-
-can be downloaded using this code
-import kagglehub
-
-# Download latest version
-path = kagglehub.dataset_download("abdulvahap/music-instrunment-sounds-for-classification")
-
-print("Path to dataset files:", path)
-
-or manually from link above it consist of 3 sec instrumental audioclips.
-
-Ps. You have to have an account on kaggle to donwload this data.
-PPs. Warning it weights aproximetly 5 Gb ;)
+https://www.kaggle.com/datasets/abdulvahap/music-instrunment-sounds-for-classification
 """
 
 # 1. Imports
@@ -42,8 +29,6 @@ print(
     if device == "cuda"
     else f"\n\033[34mDevice is set to: {device}\033[0m\n"
 )
-# torchaudio.set_audio_backend("soundfile")
-# print(f"torchaudio: {torchaudio}")
 
 
 # 3. Hyperparameters
@@ -52,11 +37,15 @@ BATCH_SIZE = 32
 EPOCHS = 10
 INPUT_SHAPE = 1 * 128 * 517
 HIDDEN_UNITS = 128
-OUTPUT_SHAPE = 9
+OUTPUT_SHAPE = 28  # FIXED: było 9, ale masz 28 klas instrumentów!
 LEARNING_RATE = 1e-4
 LOSS_FN = nn.CrossEntropyLoss()
 N_ROWS = 3
 N_COLS = 3
+
+# DEBUG MODE - ustaw na True żeby trenować na małym zbiorze danych
+DEBUG_MODE = True  # Zmień na False dla pełnego treningu
+DEBUG_SAMPLES = 500  # Ile próbek użyć w trybie debug (masz ~5GB danych!)
 
 
 # 4. Reading dataset
@@ -71,7 +60,17 @@ for i in os.listdir("Sound_Classification/dataset/"):
 
 
 data_df = pd.DataFrame(zip(sound_path, labels), columns=["sound_path", "labels"])
+print(f"\nOryginalny dataset: {len(data_df)} próbek")
 print(data_df.head())
+
+# DEBUG MODE - użyj mniejszego datasetu do szybkiego testowania
+if DEBUG_MODE:
+    print(f"\n⚠️  DEBUG MODE AKTYWNY - używam tylko {DEBUG_SAMPLES} próbek!")
+    print(f"   (Wyłącz DEBUG_MODE = False dla pełnego treningu)")
+    data_df = data_df.sample(
+        n=min(DEBUG_SAMPLES, len(data_df)), random_state=RANDOM_SEED
+    )
+    print(f"   Dataset po redukcji: {len(data_df)} próbek\n")
 
 
 # 5. Data split
@@ -177,26 +176,63 @@ def visualize_batch(dataloader, n_rows=3, n_cols=3, mode="spectrogram"):
     plt.show()
 
 
-train_loader = DataLoader(train_dataset, batch_size=9, shuffle=True)
+# ZAKOMENTOWANE - wizualizacja spowalnia
+# train_loader = DataLoader(train_dataset, batch_size=9, shuffle=True)
+# visualize_batch(train_loader, mode="spectrogram")
 
-visualize_batch(train_loader, mode="spectrogram")
 
-
-# 10. Dataloader
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=True)
+# 10. Dataloader - with num_workers for speed
+# UWAGA: num_workers > 0 wymaga if __name__ == '__main__' na Windows!
+# Jeśli dostajesz błąd multiprocessing, ustaw num_workers=0
+train_loader = DataLoader(
+    train_dataset,
+    batch_size=BATCH_SIZE,
+    shuffle=True,
+    num_workers=0,  # Ustaw 0 dla Windows (lub użyj if __name__ == '__main__')
+    pin_memory=True if device == "cuda" else False,  # Przyspiesza transfer GPU
+)
+test_loader = DataLoader(
+    test_dataset,
+    batch_size=BATCH_SIZE,
+    shuffle=False,  # Nie trzeba shufflować test
+    num_workers=0,
+    pin_memory=True if device == "cuda" else False,
+)
 
 # 10.1 Checking shape for input and output shapes
 for X_batch, y_batch in train_loader:
     print(f"X_batch: {X_batch.shape} | y_batch: {y_batch.shape}")
     break
 
-# 10.2 chcecking if label is out of range
+# 10.2 Checking if label is out of range
+print("\n" + "=" * 50)
+print("SPRAWDZANIE ZAKRESU ETYKIET")
+print("=" * 50)
+print(f"Unikalne klasy: {label_encoder.classes_}")
+print(f"Liczba klas: {len(label_encoder.classes_)}")
+
+# Check all datasets
+for name, dataset in [("train", train_dataset), ("test", test_dataset)]:
+    all_labels = [dataset[i][1] for i in range(len(dataset))]
+    min_label = min(all_labels)
+    max_label = max(all_labels)
+    print(f"\n{name.upper()} dataset:")
+    print(f"  Min label: {min_label}")
+    print(f"  Max label: {max_label}")
+
+    if max_label >= OUTPUT_SHAPE:
+        print(f"\n❌ BŁĄD: max_label={max_label} >= OUTPUT_SHAPE={OUTPUT_SHAPE}")
+        print(f"Musisz zwiększyć OUTPUT_SHAPE do {max_label + 1} lub więcej!")
+        sys.exit(1)
+    if min_label < 0:
+        print(f"\n❌ BŁĄD: min_label={min_label} < 0")
+        sys.exit(1)
+
+print(f"\n✅ Wszystkie etykiety są w zakresie [0, {OUTPUT_SHAPE-1}]")
+print("=" * 50 + "\n")
 
 
 # 11. CNN Model
-
-
 class CNNSoundClassifeir(nn.Module):
     def __init__(self, input_shape, hidden_units, output_shape):
         super().__init__()
@@ -247,17 +283,9 @@ class CNNSoundClassifeir(nn.Module):
 
 # 14. Train and test loops
 def accuracy_fn(y_true, y_pred):
-    """Calculates accuracy between truth labels and predictions.
-
-    Args:
-        y_true (torch.Tensor): Truth labels for predictions.
-        y_pred (torch.Tensor): Predictions to be compared to predictions.
-
-    Returns:
-        [torch.float]: Accuracy value between y_true and y_pred, e.g. 78.45
-    """
+    """Calculates accuracy between truth labels and predictions."""
     correct = torch.eq(y_true, y_pred).sum().item()
-    acc = (correct / len(y_pred)) * 180
+    acc = (correct / len(y_pred)) * 100  # FIXED: było 180, teraz 100
     return acc
 
 
@@ -269,9 +297,12 @@ def train_step(
     accuracy_fn=None,
     device: torch.device = device,
 ):
-    train_loss, train_loss = 0, 0
+    train_loss, train_acc = 0, 0
     model.to(device)
-    model.train
+    model.train()
+
+    # Progress tracking
+    total_batches = len(data_loader)
 
     for batch, (X, y) in enumerate(data_loader):
         X, y = X.to(device), y.to(device)
@@ -285,21 +316,29 @@ def train_step(
 
         # 3. Calculate accuracy
         if accuracy_fn:
-            train_acc = accuracy_fn(y_true=y, y_pred=y_pred.argmax(dim=1))
+            train_acc += accuracy_fn(y_true=y, y_pred=y_pred.argmax(dim=1))
 
-        # 4. Optmimizer zero grad
-        optimizer.zerograd()
+        # 4. Optimizer zero grad
+        optimizer.zero_grad()
 
         # 5. Backward
         loss.backward()
 
-        # 6. Optmizer step
+        # 6. Optimizer step
         optimizer.step()
+
+        # Progress indicator every 10 batches
+        if (batch + 1) % 10 == 0:
+            print(
+                f"  Batch [{batch+1}/{total_batches}] - Loss: {loss.item():.4f}",
+                end="\r",
+            )
 
     train_loss /= len(data_loader)
     train_acc /= len(data_loader)
 
-    print(f"Train loss: {train_loss:.4f} | Train accuracy: {train_acc:.4f}%")
+    print()  # New line after progress
+
     return train_loss, train_acc
 
 
@@ -312,7 +351,7 @@ def test_step(
 ):
     test_loss, test_acc = 0, 0
     model.to(device)
-    model.eval
+    model.eval()  # FIXED: dodano nawiasy ()
 
     with torch.inference_mode():
         for X, y in data_loader:
@@ -324,10 +363,9 @@ def test_step(
             test_loss += loss_fn(test_pred, y).item()
             test_acc += accuracy_fn(y_true=y, y_pred=test_pred.argmax(dim=1))
 
-        test_loss += len(data_loader)
-        test_acc += len(data_loader)
+        test_loss /= len(data_loader)  # FIXED: było +=
+        test_acc /= len(data_loader)  # FIXED: było +=
 
-    print(f"Test loss: {test_loss:.4f} | Test acc: {test_acc:.4f}%")
     return test_loss, test_acc
 
 
@@ -345,29 +383,47 @@ cnn_optimizer = Adam(cnn_model.parameters(), lr=LEARNING_RATE)
 # 16. Training
 cnn_history = {"train_loss": [], "train_acc": [], "test_loss": [], "test_acc": []}
 
-
 print(f"\n{'=' * 30} CNN Voice Classifier {'=' * 30}")
+print(f"Training samples: {len(train_dataset)}")
+print(f"Test samples: {len(test_dataset)}")
+print(f"Batches per epoch: {len(train_loader)}")
+print(f"{'=' * 80}\n")
+
+import time
+
+start_time = time.time()
+
 for epoch in range(EPOCHS):
+    epoch_start = time.time()
     print(f"\nCNN Epoch: {epoch+1}/{EPOCHS}")
     print("-" * 40)
 
     train_loss, train_acc = train_step(
         cnn_model, train_loader, LOSS_FN, cnn_optimizer, accuracy_fn, device
     )
-    test_loss, test_acc = test_step(cnn_model, test_loader, accuracy_fn, device)
+    test_loss, test_acc = test_step(
+        cnn_model, test_loader, LOSS_FN, accuracy_fn, device
+    )
 
     cnn_history["train_loss"].append(train_loss)
     cnn_history["train_acc"].append(train_acc)
     cnn_history["test_loss"].append(test_loss)
     cnn_history["test_acc"].append(test_acc)
 
+    epoch_time = time.time() - epoch_start
     print(f"CNN Train loss: {train_loss:.4f} | Train accuracy: {train_acc:.2f}%")
     print(f"CNN Test loss: {test_loss:.4f} | Test accuracy: {test_acc:.2f}%")
+    print(f"Epoch time: {epoch_time:.2f}s")
+
+total_time = time.time() - start_time
+print(f"\n{'=' * 80}")
+print(f"Total training time: {total_time/60:.2f} minutes")
 
 
 cnn_best_acc = max(cnn_history["test_acc"])
 cnn_final_acc = cnn_history["test_acc"][-1]
 
-
+print(f"\n{'=' * 30} PODSUMOWANIE {'=' * 30}")
 print(f"  Final Test Accuracy: {cnn_final_acc:.2f}%")
+print(f"  Best Test Accuracy: {cnn_best_acc:.2f}%")
 print(f"  Final Train Loss: {cnn_history['train_loss'][-1]:.4f}")
